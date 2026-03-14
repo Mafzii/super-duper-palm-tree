@@ -1,4 +1,4 @@
-FROM python:3.13-alpine 
+FROM python:3.13-alpine
 
 WORKDIR /app
 
@@ -7,5 +7,4 @@ RUN pip install -r requirements.txt
 
 COPY . /app
 
-ENTRYPOINT ["python3"]
-CMD ["app.py"]
+CMD ["gunicorn", "-w", "1", "--threads", "4", "-b", "0.0.0.0:8000", "app:app"]
