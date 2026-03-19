@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "app"))
 
 from crawler.ai.claude_provider import ClaudeProvider
 from crawler.ai.gemini_provider import GeminiProvider
-from crawler.engine import CrawlEngine
+from crawler.crawl4ai_engine import Crawl4AIEngine
 from crawler.worker import PageResult
 
 # ── terminal colours (graceful fallback if not a tty) ─────────────────────────
@@ -31,9 +31,9 @@ RED    = lambda t: _c("31", t)
 class Session:
     goal: str = ""
     config: dict = field(default_factory=lambda: {
-        "provider":       "claude",
-        "max_depth":      3,
-        "max_pages":      200,
+        "provider":       "gemini",
+        "max_depth":      1,
+        "max_pages":      20,
         "threads":        4,
         "rps":            1.0,
         "min_delay":      1.0,
@@ -199,7 +199,7 @@ class REPL:
                 if summary:
                     self._out(f"{CYAN('AI plan')}: {summary}\n")
 
-        engine = CrawlEngine(
+        engine = Crawl4AIEngine(
             job_id="cli",
             goal=self.session.goal,
             seed_urls=urls,
@@ -239,6 +239,11 @@ class REPL:
             self._out(f"Crawl in progress — {len(self.session.results)} pages so far.")
         print()
 
+    def _get_ai_provider(self):
+        """Build an AI provider from current config."""
+        name = self.session.config["provider"]
+        return GeminiProvider() if name == "gemini" else ClaudeProvider()
+
     def cmd_results(self, args: str) -> None:
         try:
             n = int(args.strip()) if args.strip() else 10
@@ -247,22 +252,53 @@ class REPL:
             print()
             return
 
-        good = sorted(
-            [r for r in self.session.results if not r.error],
-            key=lambda r: r.score,
-            reverse=True,
-        )[:n]
+        # Deduplicate by URL, keeping highest-scored version
+        seen: dict[str, PageResult] = {}
+        for r in self.session.results:
+            if r.error:
+                continue
+            if r.url not in seen or r.score > seen[r.url].score:
+                seen[r.url] = r
+
+        good = sorted(seen.values(), key=lambda r: r.score, reverse=True)[:n]
 
         if not good:
             self._out("No results yet — run /crawl first.")
             print()
             return
 
+        # Generate summaries on demand for results that don't have one
+        needs_summary = [r for r in good if not r.summary and r.text]
+        if needs_summary and self.session.goal:
+            self._out(f"{DIM('Generating summaries...')}")
+            failed = 0
+            try:
+                ai = self._get_ai_provider()
+            except Exception as e:
+                self._err(f"Could not initialise AI provider: {e}")
+                ai = None
+
+            if ai:
+                for r in needs_summary:
+                    try:
+                        r.summary = ai.summarize(self.session.goal, r.url, r.text)
+                        if not r.summary:
+                            failed += 1
+                            self._out(DIM(f"  ⚠ empty summary for {r.url}"))
+                    except Exception as e:
+                        failed += 1
+                        self._out(DIM(f"  ⚠ summary failed for {r.url}: {e}"))
+
+                if failed == len(needs_summary):
+                    self._err("All summaries failed — check your API key and provider config.")
+
         print()
         for i, r in enumerate(good, 1):
-            snippet = r.text[:120].replace("\n", " ") if r.text else ""
             self._out(f"{BOLD(f'{i}.')}  {CYAN(r.url):<80}  {DIM(f'score={r.score:.2f}')}")
-            if snippet:
+            if r.summary:
+                self._out(f"    {r.summary}")
+            elif r.text:
+                snippet = r.text[:120].replace("\n", " ")
                 self._out(f"    {DIM(snippet)}")
             print()
 
@@ -275,7 +311,7 @@ class REPL:
             return
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
-                f, fieldnames=["url", "depth", "score", "links_count", "text_snippet"]
+                f, fieldnames=["url", "depth", "score", "links_count", "summary", "text_snippet"]
             )
             writer.writeheader()
             for r in good:
@@ -284,6 +320,7 @@ class REPL:
                     "depth":        r.depth,
                     "score":        r.score,
                     "links_count":  len(r.links),
+                    "summary":      r.summary,
                     "text_snippet": r.text[:500].replace("\n", " ") if r.text else "",
                 })
         self._ok(f"Saved {len(good)} results → {path}")
