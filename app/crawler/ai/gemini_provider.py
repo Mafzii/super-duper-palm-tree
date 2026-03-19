@@ -1,8 +1,9 @@
-"""Gemini AI provider using google-generativeai SDK."""
+"""Gemini AI provider using google-genai SDK."""
 import json
 import os
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from .provider import AIProvider, CrawlPlan, ScoredUrl
 
@@ -27,17 +28,23 @@ Goal: {goal}
 Context: {context_summary}
 URLs to rank: {urls}"""
 
+_SUMMARIZE_PROMPT_TEMPLATE = """You summarize web pages in the context of a specific crawl goal.
+Given a goal, URL, and page text, produce a 2-3 sentence summary focused on relevance to the goal.
+If the page is not relevant, say so briefly.
+
+Goal: {goal}
+URL: {url}
+
+Page text:
+{text}"""
+
+_MODEL = "gemini-2.5-flash"
+
 
 class GeminiProvider:
     def __init__(self, api_key: str | None = None):
-        genai.configure(api_key=api_key or os.environ.get("GEMINI_API_KEY"))
-        self._plan_model = genai.GenerativeModel(
-            "gemini-1.5-pro",
-            generation_config={"response_mime_type": "application/json"},
-        )
-        self._rerank_model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            generation_config={"response_mime_type": "application/json"},
+        self._client = genai.Client(
+            api_key=api_key or os.environ.get("GEMINI_API_KEY"),
         )
 
     def plan(self, goal: str, seed_urls: list[str], max_depth: int) -> CrawlPlan:
@@ -47,7 +54,13 @@ class GeminiProvider:
             max_depth=max_depth,
         )
         try:
-            response = self._plan_model.generate_content(prompt)
+            response = self._client.models.generate_content(
+                model=_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
             data = json.loads(response.text)
         except Exception:
             return CrawlPlan(summary="AI plan unavailable", prioritized_seeds=[
@@ -76,7 +89,13 @@ class GeminiProvider:
             urls=json.dumps(urls),
         )
         try:
-            response = self._rerank_model.generate_content(prompt)
+            response = self._client.models.generate_content(
+                model=_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
+            )
             data = json.loads(response.text)
         except Exception:
             return [ScoredUrl(url=u, score=0.5) for u in urls]
@@ -89,3 +108,13 @@ class GeminiProvider:
             for item in data
             if "url" in item
         ]
+
+    def summarize(self, goal: str, url: str, text: str) -> str:
+        prompt = _SUMMARIZE_PROMPT_TEMPLATE.format(
+            goal=goal, url=url, text=text[:4000]
+        )
+        response = self._client.models.generate_content(
+            model=_MODEL,
+            contents=prompt,
+        )
+        return response.text.strip()

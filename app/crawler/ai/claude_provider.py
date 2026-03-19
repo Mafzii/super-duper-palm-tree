@@ -19,6 +19,10 @@ _RERANK_SYSTEM = """You are a URL relevance ranker. Given a goal and list of URL
 Return ONLY valid JSON array:
 [{"url": "...", "score": 0.85, "reason": "..."}]"""
 
+_SUMMARIZE_SYSTEM = """You summarize web pages in the context of a specific crawl goal.
+Given a goal, URL, and page text, produce a 2-3 sentence summary focused on relevance to the goal.
+If the page is not relevant, say so briefly."""
+
 
 class ClaudeProvider:
     def __init__(self, api_key: str | None = None):
@@ -95,3 +99,16 @@ class ClaudeProvider:
             for item in data
             if "url" in item
         ]
+
+    def summarize(self, goal: str, url: str, text: str) -> str:
+        prompt = f"Goal: {goal}\nURL: {url}\n\nPage text:\n{text[:4000]}"
+        try:
+            response = self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=256,
+                system=_SUMMARIZE_SYSTEM,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.content[0].text.strip()
+        except Exception:
+            return ""

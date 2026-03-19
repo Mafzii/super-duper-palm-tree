@@ -26,3 +26,6 @@ class AIProvider(Protocol):
         self, goal: str, urls: list[str], context_summary: str
     ) -> list[ScoredUrl]:
         ...
+
+    def summarize(self, goal: str, url: str, text: str) -> str:
+        ...
