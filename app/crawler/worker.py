@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-from .http_client import HttpClient
+from .http_client import FetchError, HttpClient
 from .parser import parse
 from .rate_limiter import RateLimiter
 from .url_utils import RobotsCache, normalize_url
@@ -23,6 +23,7 @@ class PageResult:
     links: list[str] = field(default_factory=list)
     score: float = 0.5
     error: str = ""
+    summary: str = ""
 
 
 class Worker:
@@ -78,22 +79,33 @@ class Worker:
             return
 
         response = self._http.fetch(url)
-        if response is None:
-            self._on_page_done(PageResult(url=url, depth=depth, text="", error="fetch_failed"))
+        if isinstance(response, FetchError):
+            error_msg = response.error_type
+            if response.status_code:
+                error_msg += f":{response.status_code}"
+            self._on_page_done(PageResult(url=url, depth=depth, text="", error=error_msg))
             return
 
         content_type = response.headers.get("content-type", "")
         if "text/html" not in content_type:
             return
 
-        links, text = parse(response.text, url)
+        # Use final URL after redirects for correct relative link resolution
+        final_url = str(response.url)
+        links, text = parse(response.text, final_url)
 
         # Enqueue child links at next depth
+        # Deprioritize same-site links so external content is crawled first
+        page_host = urlparse(final_url).netloc
         for link in links:
-            norm = normalize_url(link, url)
+            norm = normalize_url(link, final_url)
             if norm:
-                # Encode depth into priority: lower depth = lower priority number = higher urgency
-                child_priority = (depth + 1) * 1000 + 500
+                link_host = urlparse(norm).netloc
+                same_site = link_host == page_host
+                # Within a depth band (e.g. 1000-1999), lower = higher urgency
+                # External links get 100, same-site nav gets 800
+                sub_priority = 800 if same_site else 100
+                child_priority = (depth + 1) * 1000 + sub_priority
                 self._queue.enqueue(norm, float(child_priority))
 
         result = PageResult(url=url, depth=depth, text=text, links=links)

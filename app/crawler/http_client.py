@@ -1,8 +1,15 @@
 """HTTP client with UA rotation, random delays, and referrer headers."""
 import random
 import time
+from dataclasses import dataclass
 
 import httpx
+
+
+@dataclass
+class FetchError:
+    error_type: str  # "timeout", "connection", "http_4xx", "http_5xx", "unknown"
+    status_code: int | None = None
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -31,8 +38,8 @@ class HttpClient:
             headers={"User-Agent": self._ua},
         )
 
-    def fetch(self, url: str, referrer: str = "") -> httpx.Response | None:
-        """Fetch URL with random delay. Returns response or None on error."""
+    def fetch(self, url: str, referrer: str = "") -> httpx.Response | FetchError:
+        """Fetch URL with random delay. Returns response or FetchError on failure."""
         delay = random.uniform(self._min_delay, self._max_delay)
         time.sleep(delay)
         headers = {}
@@ -40,10 +47,19 @@ class HttpClient:
             headers["Referer"] = referrer
         try:
             response = self._client.get(url, headers=headers)
-            response.raise_for_status()
-            return response
+        except httpx.TimeoutException:
+            return FetchError(error_type="timeout")
+        except httpx.ConnectError:
+            return FetchError(error_type="connection")
         except Exception:
-            return None
+            return FetchError(error_type="unknown")
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            code = response.status_code
+            category = "http_4xx" if 400 <= code < 500 else "http_5xx"
+            return FetchError(error_type=category, status_code=code)
+        return response
 
     def close(self) -> None:
         self._client.close()

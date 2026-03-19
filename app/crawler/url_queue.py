@@ -27,9 +27,9 @@ class UrlQueue:
             return True
 
     def requeue(self, url: str, new_priority: float) -> None:
-        """Update priority of an already-seen URL (lazy re-prioritization)."""
+        """Update priority of a URL still in the queue (not yet dequeued)."""
         with self._lock:
-            if url not in self._seen:
+            if url not in self._url_to_priority:
                 return
             self._url_to_priority[url] = new_priority
             heapq.heappush(self._heap, (new_priority, url))
@@ -56,3 +56,8 @@ class UrlQueue:
     def is_seen(self, url: str) -> bool:
         with self._lock:
             return url in self._seen
+
+    def get_priority(self, url: str) -> float | None:
+        """Return current priority of a queued URL, or None if already dequeued."""
+        with self._lock:
+            return self._url_to_priority.get(url)

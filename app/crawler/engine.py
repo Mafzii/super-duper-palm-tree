@@ -146,9 +146,13 @@ class CrawlEngine:
         try:
             scored = self._ai.rerank(self._goal, urls, context)
             for item in scored:
-                if self._queue.is_seen(item.url):
-                    new_priority = (1.0 - item.score) * 1000
-                    self._queue.requeue(item.url, new_priority)
+                current = self._queue.get_priority(item.url)
+                if current is None:
+                    continue
+                # Preserve depth prefix (thousands), only adjust sub-priority
+                depth_prefix = int(current // 1000) * 1000
+                new_priority = depth_prefix + (1.0 - item.score) * 999
+                self._queue.requeue(item.url, new_priority)
         except Exception:
             pass
 
