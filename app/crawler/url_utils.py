@@ -15,6 +15,7 @@ def normalize_url(url: str, base: str = "") -> str:
     normalized = parsed._replace(
         scheme=parsed.scheme.lower(),
         netloc=parsed.netloc.lower(),
+        path=parsed.path or "/",
         fragment="",
     )
     return urlunparse(normalized)
