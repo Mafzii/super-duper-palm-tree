@@ -20,14 +20,14 @@ you   /goal Find pricing pages for DevTools SaaS companies
 
 you   /crawl https://example.com https://another.com
 
-      Planning with CLAUDE...
+      Planning with GEMINI...
       AI plan: Focusing on /pricing and /plans, avoiding /blog
 
       ✓ [   1] depth=0  https://example.com
       ✓ [   2] depth=1  https://example.com/pricing
       ✗ [   3] depth=1  https://example.com/login  (fetch_failed)
       ...
-      Completed: 47 pages crawled, 3 errors
+      Completed: 18 pages crawled, 1 errors
 
 you   /results 5
 
@@ -38,7 +38,7 @@ you   /results 5
           Choose the plan that works for you...
 
 you   /export leads.csv
-      ✓ Saved 44 results → leads.csv
+      ✓ Saved 17 results → leads.csv
 
 you   /quit
       Bye!
@@ -50,11 +50,12 @@ you   /quit
 |---------|-------------|
 | `/goal <text>` | Set the crawl goal (natural language) |
 | `/crawl <url> [url…]` | Start a crawl against one or more seed URLs |
-| `/status` | Show whether a crawl is active |
+| `/plan` | Display the AI-generated crawl plan from the last crawl |
 | `/results [n]` | Show top n results sorted by relevance score (default 10) |
 | `/export [file]` | Save results to CSV (default: `results.csv`) |
 | `/config` | Show current settings |
 | `/set <key> <value>` | Change a setting (see table below) |
+| `/reset` | Clear all accumulated results |
 | `/clear` | Clear the screen |
 | `/help` | Show command list |
 | `/quit` | Exit |
@@ -63,14 +64,11 @@ you   /quit
 
 | Key | Default | Type | Description |
 |-----|---------|------|-------------|
-| `provider` | `claude` | `claude` \| `gemini` | AI provider |
-| `max-pages` | `200` | int | Stop after N pages |
-| `max-depth` | `3` | int | Max link depth from seed URLs |
-| `threads` | `4` | int | Concurrent crawler threads |
-| `rps` | `1.0` | float | Max requests/sec per domain |
-| `min-delay` | `1.0` | float | Min random delay between requests (sec) |
-| `max-delay` | `3.0` | float | Max random delay between requests (sec) |
-| `robots` | `on` | `on` \| `off` | Respect robots.txt |
+| `provider` | `gemini` | `claude` \| `gemini` | AI provider |
+| `max-pages` | `20` | int | Stop after N pages |
+| `max-depth` | `1` | int | Max link depth from seed URLs |
+| `min-delay` | `1.0` | float | Min delay between requests (sec) |
+| `max-delay` | `3.0` | float | Max delay between requests (sec) |
 
 ### Tips
 
@@ -108,8 +106,9 @@ curl -X POST http://localhost:8000/api/v1/jobs \
     "goal": "Find pricing pages for DevTools SaaS companies",
     "seed_urls": ["https://example.com"],
     "max_depth": 3,
-    "max_pages": 200,
-    "thread_count": 4,
+    "max_pages": 500,
+    "min_delay_seconds": 1.0,
+    "max_delay_seconds": 3.0,
     "ai_provider": "claude"
   }'
 # → { "job_id": "abc-123", "status": "pending" }
