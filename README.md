@@ -1,14 +1,15 @@
 # super-duper-palm-tree
 
-AI-powered multithreaded web crawler for lead generation. Give it a goal and seed URLs — it uses Claude or Gemini to plan the crawl, prioritize links, and continuously rerank the queue based on relevance.
+AI-powered web crawler for lead generation. Give it a goal and seed URLs — it uses Claude or Gemini to plan the crawl, prioritize links, and filter content by relevance.
 
 ## Features
 
-- **AI-directed crawling** — Claude Sonnet (or Gemini 1.5 Pro) generates a crawl plan with seed priorities and URL patterns to focus on or avoid
-- **Continuous reranking** — every 50 URLs buffered, Claude Haiku (or Gemini Flash) rescores the queue so the most relevant pages are fetched first
-- **Multithreaded** — configurable thread count with one HTTP client per thread to avoid connection pool contention
-- **Rate limiting** — per-domain token bucket keeps you within polite RPS limits
-- **robots.txt respected** — cached with 24h TTL, can be disabled
+- **AI-directed crawling** — Claude Sonnet or Gemini 2.5 Flash generates a crawl plan with seed priorities and URL patterns to focus on or avoid
+- **Browser-based crawling** — uses crawl4ai with headless Chrome for JavaScript-rendered pages
+- **BM25 content filtering** — extracts the most relevant text from each page based on the crawl goal
+- **URL scoring** — prioritizes links matching focus patterns; supports aggregator mode (prefer external links for sites like HN/Reddit)
+- **Real-time streaming** — SSE endpoint for live crawl progress
+- **Dual interface** — interactive CLI for local use, REST API for integrations
 
 ---
 

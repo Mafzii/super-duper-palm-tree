@@ -9,7 +9,7 @@ from typing import Any
 
 from .ai.claude_provider import ClaudeProvider
 from .ai.gemini_provider import GeminiProvider
-from .engine import CrawlEngine
+from .crawl4ai_engine import Crawl4AIEngine
 from .worker import PageResult
 
 
@@ -28,7 +28,7 @@ class Job:
     error: str = ""
 
     # Internal
-    _engine: CrawlEngine | None = field(default=None, repr=False)
+    _engine: Crawl4AIEngine | None = field(default=None, repr=False)
     _results_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _stats_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _sse_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -72,12 +72,17 @@ class JobManager:
         config = {
             "max_depth": payload.get("max_depth", 3),
             "max_pages": payload.get("max_pages", 500),
-            "thread_count": payload.get("thread_count", 8),
-            "rate_limit_rps": payload.get("rate_limit_rps", 1.0),
             "min_delay_seconds": payload.get("min_delay_seconds", 1.0),
             "max_delay_seconds": payload.get("max_delay_seconds", 3.0),
-            "respect_robots": payload.get("respect_robots", True),
             "ai_provider": payload.get("ai_provider", "claude"),
+            "strategy": payload.get("strategy", "bfs"),
+            "content_filter": payload.get("content_filter", "bm25"),
+            "bm25_threshold": payload.get("bm25_threshold", 1.2),
+            "cache_mode": payload.get("cache_mode", "bypass"),
+            "stealth": payload.get("stealth", False),
+            "headless": payload.get("headless", True),
+            "score_threshold": payload.get("score_threshold", 0.0),
+            "include_external": payload.get("include_external", True),
         }
         job = Job(
             job_id=job_id,
@@ -96,21 +101,26 @@ class JobManager:
             ai = ClaudeProvider()
 
         # Build engine
-        engine = CrawlEngine(
+        engine = Crawl4AIEngine(
             job_id=job_id,
             goal=job.goal,
             seed_urls=job.seed_urls,
             ai_provider=ai,
             max_depth=config["max_depth"],
             max_pages=config["max_pages"],
-            thread_count=config["thread_count"],
-            rate_limit_rps=config["rate_limit_rps"],
             min_delay=config["min_delay_seconds"],
             max_delay=config["max_delay_seconds"],
-            respect_robots=config["respect_robots"],
             on_status_change=lambda s, j=job: self._set_status(j, s),
             on_page_done=lambda r, j=job: self._on_page_done(j, r),
             on_sse_event=lambda e, j=job: self._push_sse(j, e),
+            strategy=config["strategy"],
+            content_filter=config["content_filter"],
+            bm25_threshold=config["bm25_threshold"],
+            cache_mode=config["cache_mode"],
+            stealth=config["stealth"],
+            headless=config["headless"],
+            score_threshold=config["score_threshold"],
+            include_external=config["include_external"],
         )
         job._engine = engine
 
@@ -119,7 +129,7 @@ class JobManager:
         t.start()
         return job
 
-    def _run_engine(self, job: Job, engine: CrawlEngine) -> None:
+    def _run_engine(self, job: Job, engine: Crawl4AIEngine) -> None:
         try:
             engine.start()
             # Capture AI plan after run
@@ -133,6 +143,7 @@ class JobManager:
                     ],
                     "avoid_patterns": plan.avoid_patterns,
                     "focus_patterns": plan.focus_patterns,
+                    "prefer_external": plan.prefer_external,
                 }
         except Exception as e:
             self._set_status(job, "error")
